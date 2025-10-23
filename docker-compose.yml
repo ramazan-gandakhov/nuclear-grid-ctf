@@ -1,0 +1,68 @@
+services:
+
+  db:
+    image: postgres:15
+    container_name: db
+    env_file: .env
+    expose:
+      - 5432
+    restart: always
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hmi-master:
+    build: ./hmi_master
+    container_name: hmi_master
+    expose:
+      - 8000
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      scada-reactor-1:
+      scada-reactor-2:
+      scada-reactor-3:
+      cctv-server:
+
+  nginx-proxy:
+    image: nginx:latest
+    container_name: nginx_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - hmi-master
+
+  scada-reactor-1:
+    build: ./scada_reactor
+    container_name: scada_reactor_1
+    command: python /app/reactor_api.py --reactor 1
+
+  scada-reactor-2:
+    build: ./scada_reactor
+    container_name: scada_reactor_2
+    command: python /app/reactor_api.py --reactor 2
+
+  scada-reactor-3:
+    build: ./scada_reactor
+    container_name: scada_reactor_3
+    command: python /app/reactor_api.py --reactor 3
+  cctv-server:
+    build: ./cctv_manager
+    expose:
+      - 8000
+    env_file: .env
+    container_name: cctv_server
+    volumes:
+      - ./cctv_streams:/usr/share/nginx/html:ro
+
+volumes:
+  db_data:
